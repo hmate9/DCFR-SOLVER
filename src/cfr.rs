@@ -835,9 +835,22 @@ pub struct SubgameSolver {
     /// Neural network for depth-limited solving (keeps Arc alive for raw ptrs in tree).
     #[cfg(feature = "nn")]
     valuenet: Option<Arc<crate::valuenet::ValueNet>>,
+    /// Optional mid-street root (bets already made on the current street).
+    /// `config.pot`/`config.stacks` must equal this state's `pot`/`stacks`.
+    root_override: Option<GameState>,
 }
 
 impl SubgameSolver {
+    /// Start the subgame from an arbitrary decision node of `config.street`
+    /// instead of the street's first action. The state's `stacks` become the
+    /// invested-chip baseline, so chips already bet are sunk costs.
+    pub fn set_root_state(&mut self, state: GameState) {
+        assert_eq!(state.street, self.config.street, "root street mismatch");
+        assert_eq!(state.stacks, self.config.stacks, "root stacks must equal config.stacks");
+        assert_eq!(state.pot, self.config.pot, "root pot must equal config.pot");
+        self.root_override = Some(state);
+    }
+
     pub fn new(config: SubgameConfig) -> Self {
         init_rayon_pool();
         let combo_map = ComboMap::new(config.board, &config.ranges);
@@ -853,6 +866,7 @@ impl SubgameSolver {
             combo_map,
             #[cfg(feature = "nn")]
             valuenet: None,
+            root_override: None,
         }
     }
 
@@ -906,6 +920,12 @@ impl SubgameSolver {
 
     /// Create root GameState from config, including bet_config if set.
     pub(crate) fn root_state(&self) -> GameState {
+        if let Some(ref root) = self.root_override {
+            let mut state = root.clone();
+            state.board = self.config.board;
+            state.bet_config = self.config.bet_config.clone();
+            return state;
+        }
         let mut state = GameState::new_postflop(
             self.config.street,
             self.config.pot,
@@ -3914,6 +3934,41 @@ mod tests {
         let expl_pct = solver.exploitability_pct();
         println!("Exploitability: {:.2} chips ({:.2}% pot)", expl, expl_pct);
         assert!(expl >= -1.0, "exploitability should be >= ~0, got {}", expl);
+    }
+
+    #[test]
+    fn test_set_root_state_starts_mid_street() {
+        // OOP has already bet the pot; IP holds pure air and should fold.
+        let config = SubgameConfig {
+            board: river_board(),
+            pot: 20,
+            stacks: [90, 90],
+            ranges: [Range::parse("AA").unwrap(), Range::parse("33").unwrap()],
+            iterations: 200,
+            street: Street::River,
+            warmup_frac: 0.5,
+            bet_config: None,
+            dcfr: true,
+            cfr_plus: true, skip_cum_strategy: false, dcfr_mode: DcfrMode::Standard,
+            depth_limit: None, rake_pct: 0.0, rake_cap: 0.0, exploration_eps: 0.0, entropy_bonus: 0.0, entropy_anneal: false, entropy_root_only: false, opp_dilute: 0.0, softmax_temp: 0.0, current_iteration: 0, use_iso: true, rm_floor: 0.0, alternating: false, t_weight: false, frozen_root: None, check_bias: 0.0, pref_passive_delta: 1.0, pref_beta: 0.0, pref_beta_all_nodes: false, pruning: false, combo_check_bias: None, frozen_warmup: 0, unfreeze_decay: 1.0,
+        };
+        let mut root = GameState::new_postflop(Street::River, 20, [90, 90], river_board());
+        root.bets = [20, 0];
+        root.to_act = 1;
+        root.n_raises = 1;
+        root.actions_this_street = 1;
+        root.last_aggressor = Some(0);
+        let mut solver = SubgameSolver::new(config);
+        solver.set_root_state(root);
+        solver.solve();
+        let strategy = solver.get_strategy(&[]).expect("root strategy");
+        let mut combos = 0;
+        for (_combo, probs) in strategy {
+            combos += 1;
+            assert_eq!(probs[0].0, Action::Fold, "IP faces a bet, so fold is a root action");
+            assert!(probs[0].1 > 0.95, "air folds to a pot bet, got {:?}", probs);
+        }
+        assert!(combos > 0);
     }
 
     #[test]
