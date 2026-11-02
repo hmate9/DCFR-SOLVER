@@ -302,7 +302,7 @@ fn gradient_traverse(
                     for c in 0..live_count { out[c] += cu[perm[c] as usize]; }
                 }
             }
-            let inv = 1.0 / *n_actual as f32;
+            let inv = 1.0 / crate::cfr::chance_outcomes(*n_actual);
             for c in 0..live_count { out[c] *= inv; }
             // iso_perms maps dead combos to live_count — zero it for parent aggregation.
             out[live_count] = 0.0;

@@ -2023,13 +2023,8 @@ impl SubgameSolver {
 
     /// Compute exploitability using eval-normalized formula.
     ///
-    /// In multi-street games, the chance node's 1/N averaging creates a
-    /// strategy-dependent normalization factor: fold terminals (before chance)
-    /// carry weight 1 per pair, while river terminals carry weight ~44/48.
-    /// No fixed Z satisfies V_eval_sum = Z * pot for all strategies.
-    ///
-    /// Instead, we compute V_eval_sum directly (which IS constant-sum within
-    /// each strategy profile) and use it as the normalizer:
+    /// We compute V_eval_sum directly (constant-sum within each strategy
+    /// profile) and use it as the normalizer:
     ///   expl = (V_br_sum - V_eval_sum) * pot / (2 * V_eval_sum)
     ///
     /// At Nash: V_br = V_eval for each player, so expl = 0.
@@ -3304,7 +3299,7 @@ fn chance_utility(
             }
         }
     }
-    let inv = 1.0 / n_actual as f32;
+    let inv = 1.0 / chance_outcomes(n_actual);
     for c in 0..live_count { out[c] *= inv; }
     // iso_perms maps dead combos to live_count — zero it for parent aggregation.
     out[live_count] = 0.0;
@@ -3688,6 +3683,13 @@ pub(crate) fn br_traverse(
 // Parallel chance evaluation for read-only traversals
 // ---------------------------------------------------------------------------
 
+/// Number of equally likely cards at a chance node, as seen by one hand pair.
+/// `n_actual` counts the cards not on the board; the two hands hold 4 of them.
+#[inline]
+pub(crate) fn chance_outcomes(n_actual: u8) -> f32 {
+    (n_actual - 4) as f32
+}
+
 pub(crate) fn chance_eval_parallel<F>(
     tree: &[TreeNode],
     cfr: &[CfrData],
@@ -3738,7 +3740,7 @@ where
             }
         }
     }
-    let inv = 1.0 / n_actual as f32;
+    let inv = 1.0 / chance_outcomes(n_actual);
     for c in 0..live_count { util[c] *= inv; }
     util
 }
