@@ -2613,7 +2613,7 @@ fn depth_limited_equity(
             out[i] += card_out[i];
         }
     }
-    let inv = 1.0 / n_cards as f32;
+    let inv = 1.0 / chance_outcomes(n_cards as u8);
     for i in 0..live_count {
         out[i] *= inv;
     }
@@ -2737,7 +2737,7 @@ fn depth_limited_utility(
     let batch_evs = vn.predict_batch(&batch_inputs, traverser);
 
     // --- Aggregate per-card values with calibration ---
-    let inv = 1.0 / n_cards as f32;
+    let inv = 1.0 / chance_outcomes(n_cards as u8);
     let trav = traverser as usize;
 
     for (card_idx, &card) in available_cards.iter().enumerate() {
