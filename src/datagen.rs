@@ -620,8 +620,8 @@ pub fn compute_equity_cfv(
             }
         }
 
-        // Average over river cards
-        let inv = 1.0 / n_cards;
+        // Average over river cards; the two hands hold 4 of the available cards
+        let inv = 1.0 / (n_cards - 4.0);
         for p in 0..2 {
             for c in 0..NUM_COMBOS {
                 equity[p][c] *= inv;
